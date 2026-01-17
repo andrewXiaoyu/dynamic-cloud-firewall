@@ -1,0 +1,34 @@
+[Unit]
+Description=Dynamic Cloud Firewall - Multi-Cloud Security Group Automation
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/dynamic-cloud-firewall
+Environment=PYTHONPATH=/opt/dynamic-cloud-firewall
+EnvironmentFile=-/opt/dynamic-cloud-firewall/.env
+ExecStart=/usr/bin/python3 /opt/dynamic-cloud-firewall/app/main.py
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+Restart=on-failure
+RestartSec=10
+
+# 日志配置
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dynamic-cloud-firewall
+
+# 安全配置
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/dynamic-cloud-firewall/logs
+ReadOnlyPaths=/opt/dynamic-cloud-firewall/config
+
+[Install]
+WantedBy=multi-user.target
