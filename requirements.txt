@@ -4,6 +4,7 @@ pyyaml==6.0.1
 python-dotenv==1.0.0
 tencentcloud-sdk-python==3.0.1152
 alibabacloud-ecs20140526==5.0.0
+alibabacloud-swas-open20200601==3.0.0
 #alibabacloud-slb20140515==5.0.0
 boto3==1.34.111
 huaweicloudsdkcore==3.0.100

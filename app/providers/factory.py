@@ -2,10 +2,10 @@ from typing import Dict, Any, Optional
 from app.providers.base import BaseProvider
 from app.providers.client_manager import client_manager
 from app.providers.tencent import TencentProvider
+from app.providers.aliyun import AliyunProvider
+from app.providers.tencent_lighthouse import TencentLighthouseProvider
+from app.providers.aliyun_lighthouse import AliyunLighthouseProvider
 from app.providers.others import (
-    TencentLighthouseProvider,
-    AliyunProvider,
-    AliyunLighthouseProvider,
     AWSProvider,
     AWSLightsailProvider,
     HuaweiProvider,

@@ -104,7 +104,14 @@ class ClientManager:
                 logger.error(f"不支持的云厂商: {provider_name}")
                 return None
 
-            return provider_class(config)
+            provider = provider_class(config)
+            if (
+                hasattr(provider, "initialize_client")
+                and not provider.initialize_client()
+            ):
+                logger.error(f"初始化provider客户端失败: {provider_name}")
+                return None
+            return provider
         except Exception as e:
             logger.error(f"创建provider失败: {provider_name}, 错误: {e}")
             return None

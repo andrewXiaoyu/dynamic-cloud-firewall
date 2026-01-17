@@ -113,7 +113,8 @@ start_service() {
     export FLASK_ENV=production
     
     # 启动服务
-    if PYTHONPATH=/home/ubuntu/security-group-manager python3 app/main.py; then
+    cd /home/ubuntu/security-group-manager
+    if python3 -c "from app.main import main; main()"; then
         log_success "服务启动成功"
     else
         log_error "服务启动失败"

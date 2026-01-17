@@ -86,7 +86,7 @@ class BaseProvider(ABC):
         Args:
             security_group_id: 安全组ID
             protocol: 协议类型
-            ports: 端口列表
+            ports: 端口列表（字符串格式，如['1-65535']或['22']）
             current_ip: 当前IP地址
 
         Returns:
@@ -147,8 +147,8 @@ class BaseProvider(ABC):
         检查端口是否匹配
 
         Args:
-            rule_ports: 规则端口
-            target_ports: 目标端口
+            rule_ports: 规则端口（可能是整数列表或字符串列表）
+            target_ports: 目标端口（字符串格式，如['1-65535']或['22']）
 
         Returns:
             bool: 是否匹配
@@ -156,6 +156,21 @@ class BaseProvider(ABC):
         # 处理端口范围和单个端口的匹配逻辑
         if not rule_ports or not target_ports:
             return False
+
+        # 将规则端口转换为字符串格式进行比较
+        rule_ports_str = []
+        for port in rule_ports:
+            if isinstance(port, int):
+                rule_ports_str.append(str(port))
+            else:
+                rule_ports_str.append(str(port))
+
+        # 检查是否有交集
+        for target_port in target_ports:
+            if target_port in rule_ports_str:
+                return True
+
+        return False
 
         # 简化处理：检查是否有交集
         for target_port in target_ports:

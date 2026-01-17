@@ -25,6 +25,40 @@ def validate_ip(ip: str) -> Tuple[bool, str]:
         return False, "Invalid"
 
 
+def is_ipv6(ip: str) -> bool:
+    """
+    判断是否为IPv6地址
+
+    Args:
+        ip: IP地址字符串
+
+    Returns:
+        bool: 是否为IPv6
+    """
+    try:
+        addr = ip_address(ip)
+        return isinstance(addr, IPv6Address)
+    except ValueError:
+        return False
+
+
+def is_ipv4(ip: str) -> bool:
+    """
+    判断是否为IPv4地址
+
+    Args:
+        ip: IP地址字符串
+
+    Returns:
+        bool: 是否为IPv4
+    """
+    try:
+        addr = ip_address(ip)
+        return isinstance(addr, IPv4Address)
+    except ValueError:
+        return False
+
+
 def is_private_ip(ip: str) -> bool:
     """
     检查是否为私有IP地址
