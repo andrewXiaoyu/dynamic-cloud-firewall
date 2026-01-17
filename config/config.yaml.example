@@ -1,0 +1,111 @@
+webhook:
+  port: 5000
+  secret_key: ""
+
+cloud_providers:
+  tencent:
+    enabled: true
+    secret_id: "${TENCENT_SECRET_ID}"
+    secret_key: "${TENCENT_SECRET_KEY}"
+    region: "ap-chengdu"
+    security_groups:
+      - id: "sg-agijh6qt"
+        protocol: "tcp"
+        ports: ["1-65535"]
+        description: "Home IP full access"
+        ip_version: "auto"
+
+  aliyun:
+    enabled: true
+    access_key_id: "${ALIYUN_ACCESS_KEY_ID}"
+    access_key_secret: "${ALIYUN_ACCESS_KEY_SECRET}"
+    region: "cn-shenzhen"
+    security_groups:
+      - id: "sg-wz97sm51bf4kuvwbt841"
+        protocol: "tcp"
+        ports: ["1-65535"]
+        description: "Home IP full access"
+        ip_version: "auto"
+
+  aws:
+    enabled: false
+    access_key_id: "${AWS_ACCESS_KEY_ID}"
+    secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+    region: "us-east-1"
+    security_groups:
+      - id: ""
+        protocol: "tcp"
+        ports: ["1-65535"]
+        description: "Home IP full access"
+        ip_version: "auto"
+
+  huawei:
+    enabled: false
+    ak: "${HUAWEI_AK}"
+    sk: "${HUAWEI_SK}"
+    region: "cn-north-1"
+    security_groups:
+      - id: ""
+        protocol: "tcp"
+        ports: ["1-65535"]
+        description: "Home IP full access"
+        ip_version: "auto"
+
+  tencent_lighthouse:
+    enabled: true
+    secret_id: "${TENCENT_SECRET_ID}"
+    secret_key: "${TENCENT_SECRET_KEY}"
+    region: "ap-guangzhou"
+    type: "lighthouse"
+    instances:
+      - id: "lhins-k02ok78j"
+        protocol: "tcp"
+        ports: ["1-65535"]
+        description: "Home Lighthouse full access"
+        ip_version: "auto"
+
+  aliyun_lighthouse:
+    enabled: false
+    access_key_id: "${ALIYUN_ACCESS_KEY_ID}"
+    access_key_secret: "${ALIYUN_ACCESS_KEY_SECRET}"
+    region: "cn-hangzhou"
+    type: "lighthouse"
+    instances:
+      - id: ""
+        protocol: "tcp"
+        ports: ["1-65535"]
+        description: "Home SWAS full access"
+        ip_version: "auto"
+
+  aws_lightsail:
+    enabled: false
+    access_key_id: "${AWS_ACCESS_KEY_ID}"
+    secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+    region: "us-east-1"
+    type: "lightsail"
+    instances:
+      - id: ""
+        protocol: "tcp"
+        ports: ["1-65535"]
+        description: "Home Lightsail full access"
+        ip_version: "auto"
+
+  huawei_lighthouse:
+    enabled: false
+    ak: "${HUAWEI_AK}"
+    sk: "${HUAWEI_SK}"
+    region: "cn-north-1"
+    type: "lighthouse"
+    instances:
+      - id: ""
+        protocol: "tcp"
+        ports: ["1-65535"]
+        description: "Home HECS full access"
+        ip_version: "auto"
+
+rules:
+  auto_cleanup_old_ip: true
+  max_rules_per_group: 50
+  cleanup_days: 7
+  ipv6_prefix: 128
+  ipv4_prefix: 32
