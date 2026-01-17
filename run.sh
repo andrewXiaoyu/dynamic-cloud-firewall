@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 动态云防火墙启动脚本
+# 简化的动态云防火墙启动脚本
 
 set -e
 
@@ -28,58 +28,45 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# 检查Python版本
-check_python() {
-    log_info "检查Python版本..."
-    if ! command -v python3 &> /dev/null; then
-        log_error "Python3未安装"
-        exit 1
-    fi
-    
-    PYTHON_VERSION=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
-    REQUIRED_VERSION="3.11"
-    
-    if python3 -c "import sys; exit(0 if sys.version_info >= (3, 11) else 1)"; then
-        log_success "Python版本检查通过: $PYTHON_VERSION"
-    else
-        log_error "Python版本过低，需要 >= $REQUIRED_VERSION，当前版本: $PYTHON_VERSION"
-        exit 1
-    fi
-}
-
-# 检查依赖
+# 检查Python依赖
 check_dependencies() {
-    log_info "检查依赖文件..."
+    log_info "检查Python依赖..."
     
-    if [ ! -f "requirements.txt" ]; then
-        log_error "requirements.txt文件不存在"
-        exit 1
-    fi
+    local missing_deps=()
     
-    if [ ! -f ".env" ] && [ ! -f "config/config.yaml" ]; then
-        log_warning "未找到.env或config/config.yaml，请确保已正确配置"
-    fi
-}
-
-# 创建必要目录
-create_directories() {
-    log_info "创建必要目录..."
-    mkdir -p logs
-    log_success "目录创建完成"
-}
-
-# 安装依赖
-install_dependencies() {
-    log_info "安装Python依赖..."
-    if python3 -m pip install -r requirements.txt; then
-        log_success "依赖安装完成"
+    # 检查基本依赖
+    python3 -c "import flask" 2>/dev/null || missing_deps+=("flask")
+    python3 -c "import yaml" 2>/dev/null || missing_deps+=("pyyaml")
+    python3 -c "import dotenv" 2>/dev/null || missing_deps+=("python-dotenv")
+    python3 -c "import loguru" 2>/dev/null || missing_deps+=("loguru")
+    
+    if [ ${#missing_deps[@]} -eq 0 ]; then
+        log_success "所有基本依赖都已安装"
     else
-        log_error "依赖安装失败"
+        log_error "缺少依赖: ${missing_deps[*]}"
+        log_info "请运行: pip install --user ${missing_deps[*]}"
         exit 1
     fi
 }
 
-# 检查配置
+# 检查云厂商SDK
+check_cloud_sdks() {
+    log_info "检查云厂商SDK..."
+    
+    local sdks=()
+    python3 -c "import tencentcloud_sdk_python" 2>/dev/null && sdks+=("腾讯云") || sdks+=("")
+    python3 -c "import alibabacloud_ecs20140526" 2>/dev/null && sdks+=("阿里云") || sdks+=("")
+    python3 -c "import boto3" 2>/dev/null && sdks+=("AWS") || sdks+=("")
+    python3 -c "import huaweicloudsdkecs" 2>/dev/null && sdks+=("华为云") || sdks+=("")
+    
+    if [ ${#sdks[@]} -gt 0 ]; then
+        log_success "已安装的云厂商SDK: ${sdks[*]}"
+    else
+        log_warning "未检测到云厂商SDK"
+    fi
+}
+
+# 检查配置文件
 check_config() {
     log_info "检查配置文件..."
     
@@ -103,18 +90,11 @@ check_config() {
     fi
 }
 
-# 健康检查
-health_check() {
-    log_info "执行健康检查..."
-    sleep 2
-    
-    if curl -f http://localhost:5000/health &>/dev/null; then
-        log_success "服务健康检查通过"
-        return 0
-    else
-        log_warning "服务健康检查失败，可能是服务正在启动中"
-        return 1
-    fi
+# 创建必要目录
+create_directories() {
+    log_info "创建必要目录..."
+    mkdir -p logs
+    log_success "目录创建完成"
 }
 
 # 启动服务
@@ -128,8 +108,17 @@ start_service() {
         sleep 2
     fi
     
+    # 设置环境变量
+    export FLASK_APP=app.main
+    export FLASK_ENV=production
+    
     # 启动服务
-    python3 app/main.py
+    if PYTHONPATH=/home/ubuntu/security-group-manager python3 app/main.py; then
+        log_success "服务启动成功"
+    else
+        log_error "服务启动失败"
+        exit 1
+    fi
 }
 
 # 主函数
@@ -142,32 +131,28 @@ main() {
     
     # 检查参数
     case "${1:-start}" in
-        "start")
-            check_python
-            check_dependencies
-            create_directories
-            install_dependencies
-            check_config
-            start_service
-            ;;
         "check")
-            health_check
+            check_dependencies
+            check_cloud_sdks
             ;;
         "install")
-            check_python
+            log_info "请手动安装缺失的依赖"
+            log_info "命令: pip install --user [package_name]"
+            ;;
+        "start")
             check_dependencies
-            create_directories
-            install_dependencies
+            check_cloud_sdks
             check_config
-            log_success "安装完成，使用 './run.sh start' 启动服务"
+            create_directories
+            start_service
             ;;
         "help"|"-h"|"--help")
             echo "用法: $0 [command]"
             echo ""
             echo "命令:"
             echo "  start     启动服务 (默认)"
-            echo "  install   仅安装和检查环境"
-            echo "  check     健康检查"
+            echo "  check     检查依赖和SDK"
+            echo "  install   显示安装说明"
             echo "  help      显示帮助信息"
             echo ""
             ;;
