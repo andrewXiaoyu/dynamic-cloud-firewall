@@ -295,27 +295,49 @@ def update_security_groups_cached(
                     continue
 
                 try:
-                    if rules_config.get("auto_cleanup_old_ip", True):
-                        removed = provider.find_and_remove_old_ip_rules(
-                            target_id, protocol, ports, ip_address
-                        )
-                        if removed > 0:
-                            logger.info(
-                                f"{provider_name}: 已清理{removed}个旧{ip_type}规则"
+                    # 先检查规则是否已存在（只对有 rule_exists 方法的provider）
+                    rule_already_exists = False
+                    if hasattr(provider, "rule_exists"):
+                        try:
+                            rule_already_exists = provider.rule_exists(
+                                target_id, ip_address, protocol, ports
                             )
+                        except Exception:
+                            # 如果 rule_exists 方法调用失败，继续执行正常流程
+                            pass
 
-                    success = provider.add_security_group_rule(
-                        ip_address, target_id, protocol, ports, description
-                    )
-
-                    if success:
+                    if rule_already_exists:
+                        # 规则已存在，跳过清理和添加
                         target_result["status"] = "success"
-                        target_result["message"] = f"已添加{ip_type}地址 {ip_address}"
+                        target_result["message"] = f"{ip_type}规则已存在"
                         logger.info(
-                            f"{provider_name}: 成功更新{target_label} {target_id} ({ip_type}) - 使用缓存客户端"
+                            f"{provider_name}: {target_label} {target_id} 的{ip_type}规则已存在，跳过更新"
                         )
                     else:
-                        target_result["message"] = f"添加{ip_type}规则失败"
+                        # 规则不存在，先清理旧规则再添加新规则
+                        if rules_config.get("auto_cleanup_old_ip", True):
+                            removed = provider.find_and_remove_old_ip_rules(
+                                target_id, protocol, ports, ip_address
+                            )
+                            if removed > 0:
+                                logger.info(
+                                    f"{provider_name}: 已清理{removed}个旧{ip_type}规则"
+                                )
+
+                        success = provider.add_security_group_rule(
+                            ip_address, target_id, protocol, ports, description
+                        )
+
+                        if success:
+                            target_result["status"] = "success"
+                            target_result["message"] = (
+                                f"已添加{ip_type}地址 {ip_address}"
+                            )
+                            logger.info(
+                                f"{provider_name}: 成功更新{target_label} {target_id} ({ip_type}) - 使用缓存客户端"
+                            )
+                        else:
+                            target_result["message"] = f"添加{ip_type}规则失败"
 
                 except Exception as e:
                     target_result["message"] = str(e)

@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 from app.providers.base import BaseProvider
 
 
@@ -52,16 +52,39 @@ class TencentProvider(BaseProvider):
             resp = self.client.DescribeSecurityGroupPolicies(req)
             rules = []
 
-            if resp and resp.SecurityGroupPolicySet:
+            if (
+                resp
+                and hasattr(resp, "SecurityGroupPolicySet")
+                and resp.SecurityGroupPolicySet
+            ):
                 for rule in resp.SecurityGroupPolicySet.Ingress:
+                    ipv6_cidr = rule.Ipv6CidrBlock or ""
+                    ipv4_cidr = rule.CidrBlock or ""
+
+                    ip_version = "IPv6" if ipv6_cidr else "IPv4"
+                    ip_address = ipv6_cidr or ipv4_cidr
+
+                    # 参考阿里云的方式，将端口统一转换为列表格式
+                    port_value = rule.Port or "all"
+                    ports = []
+                    if port_value and port_value != "all":
+                        # 腾讯云可能返回字符串格式的端口
+                        if isinstance(port_value, str):
+                            ports = [port_value]
+                        else:
+                            ports = port_value
+                    else:
+                        ports = ["all"]
+
                     rules.append(
                         {
                             "rule_id": rule.PolicyIndex,
-                            "cidr": rule.CidrBlock or rule.Ipv6CidrBlock,
+                            "cidr": ip_address,
                             "protocol": rule.Protocol.lower() if rule.Protocol else "",
-                            "ports": rule.Port or "all",
+                            "ports": ports,
                             "description": rule.PolicyDescription or "",
                             "direction": "ingress",
+                            "ip_version": ip_version,
                         }
                     )
 
@@ -123,24 +146,23 @@ class TencentProvider(BaseProvider):
             req.SecurityGroupPolicySet = policy_set
             req.SecurityGroupId = security_group_id
 
-            resp = self.client.DeleteSecurityGroupPolicies(req)
-            logger.info(f"腾讯云安全组规则删除成功: {rule_id}")
+            resp = self.client.CreateSecurityGroupPolicies(req)
+            logger.info(f"腾讯云安全组规则添加成功: {ip_address}, 响应: {resp}")
             return True
         except Exception as e:
             from app.utils.logger import logger
 
             logger.error(f"添加腾讯云安全组规则失败: {e}")
+            import traceback
+
+            logger.error(f"详细错误信息: {traceback.format_exc()}")
             return False
 
     def remove_security_group_rule(self, security_group_id: str, rule_id: str) -> bool:
         """删除安全组规则"""
         try:
-            from tencentcloud.vpc.v20170312 import models
-            from app.utils.logger import logger
-
-            from tencentcloud.vpc.v20170312 import models
-
             from tencentcloud.vpc.v20170312 import models as vpc_models
+            from app.utils.logger import logger
 
             req = vpc_models.DeleteSecurityGroupPoliciesRequest()
             policy_set = vpc_models.SecurityGroupPolicySet()
@@ -151,90 +173,142 @@ class TencentProvider(BaseProvider):
             req.SecurityGroupId = security_group_id
 
             resp = self.client.DeleteSecurityGroupPolicies(req)
-            logger.info(f"腾讯云安全组规则删除成功: {rule_id}")
             return True
         except Exception as e:
             from app.utils.logger import logger
 
-            logger.error(f"删除腾讯云安全组规则失败: {e}")
+            # 捕获PolicyIndex范围错误，静默跳过
+            if "Range" in str(e) and "PolicyIndex" in str(e):
+                return False
+            logger.error(f"腾讯云: 删除规则{rule_id}失败: {e}")
             return False
 
-    def _ports_match(self, rule_port: str, target_ports: List[str]) -> bool:
+    def _ports_match(self, rule_ports: List[str], target_ports: List[str]) -> bool:
         """
-        检查端口是否匹配
+        检查端口是否匹配 - 参考阿里云的实现方式
 
         Args:
-            rule_port: 规则端口
-            target_ports: 目标端口（字符串格式，如['1-65535']或['22']）
+            rule_ports: 规则端口（列表格式，如['22']或['1-65535']）
+            target_ports: 目标端口（列表格式，如['1-65535']或['22']）
 
         Returns:
             bool: 是否匹配
         """
-        if not rule_port or not target_ports:
+        if not rule_ports or not target_ports:
             return False
 
-        # 处理端口范围和单个端口的匹配逻辑
+        # 将规则端口转换为字符串格式进行比较
+        rule_ports_str = []
+        for port in rule_ports:
+            if isinstance(port, int):
+                rule_ports_str.append(str(port))
+            else:
+                rule_ports_str.append(str(port))
+
+        # 检查是否有匹配
         for target_port in target_ports:
-            if target_port in rule_port:
+            if target_port in rule_ports_str:
                 return True
-            # 处理端口范围，如"1-65535"包含"22"
-            if "-" in target_port:
-                parts = target_port.split("-")
-                if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-                    start, end = int(parts[0]), int(parts[1])
-                    if "-" in rule_port:
-                        rule_parts = rule_port.split("-")
-                        if (
-                            len(rule_parts) == 2
-                            and rule_parts[0].isdigit()
-                            and rule_parts[1].isdigit()
-                        ):
-                            rule_start, rule_end = (
-                                int(rule_parts[0]),
-                                int(rule_parts[1]),
-                            )
-                            if start >= rule_start and end <= rule_end:
-                                return True
+            # 处理"1-65535"的匹配
+            if "1-65535" in target_port or "65535" in target_port:
+                if "65535" in rule_ports_str or "all" in [
+                    p.lower() for p in rule_ports_str
+                ]:
+                    return True
+
+        return False
+
+    def rule_exists(
+        self,
+        security_group_id: str,
+        ip_address: str,
+        protocol: str,
+        ports: List[str],
+    ) -> bool:
+        """检查规则是否已存在"""
+        from app.utils.validators import is_ipv6, get_cidr_for_ip
+
+        current_ip_version = "IPv6" if is_ipv6(ip_address) else "IPv4"
+        # 添加CIDR后缀进行比较
+        ip_with_cidr = get_cidr_for_ip(ip_address, current_ip_version)
+
+        rules = self.list_security_group_rules(security_group_id)
+
+        for rule in rules:
+            if (
+                rule.get("protocol") == protocol.lower()
+                and rule.get("cidr", "") == ip_with_cidr
+                and rule.get("ip_version") == current_ip_version
+                and self._ports_match(rule.get("ports", []), ports)
+            ):
+                return True
 
         return False
 
     def find_and_remove_old_ip_rules(
         self, security_group_id: str, protocol: str, ports: List[str], current_ip: str
     ) -> int:
-        """查找并删除旧的IP规则（腾讯云专用）"""
+        """查找并删除旧的IP规则"""
         try:
-            from tencentcloud.vpc.v20170312 import models as vpc_models
             from app.utils.validators import is_ipv6
             from app.utils.logger import logger
 
             current_ip_version = "IPv6" if is_ipv6(current_ip) else "IPv4"
 
-            # 获取当前所有规则（通过list方法，确保返回字典格式）
+            # 获取当前所有规则
             rules = self.list_security_group_rules(security_group_id)
             removed_count = 0
 
+            if not rules:
+                return 0
+
+            # 根据IP版本确定需要清理的描述
+            if current_ip_version == "IPv6":
+                target_description = "Home IP full access"
+            else:
+                target_description = "Home IP full access"
+
             for rule in rules:
-                # 检查是否为旧规则（使用字典格式）
+                # 参考阿里云的方式，使用详细的变量进行匹配检查
+                rule_protocol = rule.get("protocol", "").lower()
+                rule_ports = rule.get("ports", [])
+                rule_cidr = rule.get("cidr", "")
+                rule_desc = rule.get("description", "")
+                rule_ip_version = rule.get("ip_version", "IPv4")
+
+                # 只清理：1) IP版本匹配 2) 协议端口匹配 3) 描述完全匹配 4) IP地址不同
+                protocol_match = rule_protocol == protocol.lower()
+                ports_match = self._ports_match(rule_ports, ports)
+                desc_exact_match = rule_desc == target_description
+                ip_different = rule_cidr != current_ip
+                ip_version_match = rule_ip_version == current_ip_version
+
                 is_old = (
-                    rule.get("description")
-                    and "Home" in rule.get("description", "")
-                    and rule.get("protocol") == protocol.lower()
-                    and (
-                        (
-                            current_ip_version == "IPv4"
-                            and rule.get("cidr")
-                            and rule.get("cidr") != current_ip
-                        )
-                        or (
-                            current_ip_version == "IPv6"
-                            and rule.get("cidr")
-                            and rule.get("cidr") != current_ip
-                        )
-                    )
+                    protocol_match
+                    and ports_match
+                    and ip_different
+                    and desc_exact_match  # 精确匹配描述
+                    and ip_version_match  # 必须匹配IP版本
                 )
+
+                if is_old:
+                    rule_id = rule.get("rule_id", "")
+                    try:
+                        if self.remove_security_group_rule(security_group_id, rule_id):
+                            removed_count += 1
+                            logger.info(
+                                f"腾讯云: 删除旧{current_ip_version}规则: {rule_id}, IP: {rule.get('cidr', '')}"
+                            )
+                    except Exception as e:
+                        if "Range" not in str(e) or "PolicyIndex" not in str(e):
+                            logger.error(f"腾讯云: 删除规则{rule_id}失败: {e}")
+
+            if removed_count > 0:
+                logger.info(
+                    f"腾讯云: 已清理{removed_count}个旧{current_ip_version}规则"
+                )
+
             return removed_count
         except Exception as e:
-            from app.utils.logger import logger
-
-            logger.error(f"腾讯云清理旧规则失败: {e}")
+            logger.error(f"清理腾讯云旧规则失败: {e}")
             return 0
